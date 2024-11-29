@@ -12,7 +12,7 @@ by logging all players from your sessions to:
 
 | GTA V Session Sniffer Menu |
 | -------------------------- |
-| ![GTA V Session Sniffer Menu](https://github.com/user-attachments/assets/ef068cfc-58aa-4401-a458-3355a50c589e) |
+| ![GTA V Session Sniffer Menu](https://github.com/user-attachments/assets/ed8817fb-fe53-4e25-b765-09d6abcf0d9e) |
 
 ### <div align="center">App and Log:</div>
 
