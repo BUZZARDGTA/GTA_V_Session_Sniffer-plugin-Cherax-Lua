@@ -3,15 +3,11 @@
 -- Allows you to automatically have every usernames showing up on GTA V Session Sniffer project, by logging all players from your sessions to "Cherax\Lua\GTA_V_Session_Sniffer-plugin\log.txt".
 -- GitHub Repository: https://github.com/Illegal-Services/GTA_V_Session_Sniffer-plugin-Cherax-Lua
 
--- DISCLAIMER:
--- Cherax API is trash, I've no idea how to create these things because Lua repos are closed-source so impossible for me to code them:
--- create_tick_handler() OR threads where we can use yield() inside.
------ I've created a dummy toogle option in "Lua Content" tab literally only for that purpose, it makes literally no sense but wathever.
--- event listeners (eCallbackTrigger.OnPlayerLeave) how tf am I supposed to use that?? no examples. I get how to assign it to a Feature but how about literally any thread/function? lol
------ I've removed a part of the code using that cuz I simply cannot magically find out how to code it.
 
 -- Globals START
 ---- Global variables START
+local mainLoopThread
+local playerLeaveEventListener
 local player_join__timestamps = {}
 ---- Global variables END
 
@@ -25,13 +21,15 @@ local NATIVES <const> = {
 
     This is up-to-date for b3351
     ]]
-    NETWORK_IS_SESSION_STARTED = 0x9DE624D2FC4B603F
+    NETWORK = {
+        NETWORK_IS_SESSION_STARTED = 0x9DE624D2FC4B603F
+    }
 }
 ---- Global constants END
 
 ---- Global functions START
 -- Function to escape special characters in a string for Lua patterns
-local function escape_magic_characters(string)
+local function escape_magic_characters(str)
     local matches = {
         ["^"] = "%^",
         ["$"] = "%$",
@@ -46,7 +44,7 @@ local function escape_magic_characters(string)
         ["-"] = "%-",
         ["?"] = "%?"
     }
-    return (string:gsub(".", matches))
+    return (str:gsub(".", matches))
 end
 
 function is_file_string_need_newline_ending(str)
@@ -70,10 +68,32 @@ function read_file(file_path)
     return content, nil
 end
 
+local function is_thread_running(threadId)
+    if threadId and util.is_scheduled_in(threadId) then
+        return true
+    end
+
+    return false
+end
+
+local function delete_thread(threadId)
+    if threadId then
+        EventMgr.RemoveHandler(threadId)
+    end
+end
+
 local function handle_script_exit(params)
     params = params or {}
     if params.hasScriptCrashed == nil then
         params.hasScriptCrashed = false
+    end
+
+    if is_thread_running(mainLoopThread) then
+        delete_thread(mainLoopThread)
+    end
+
+    if is_thread_running(playerLeaveEventListener) then
+        delete_thread(playerLeaveEventListener)
     end
 
     if params.hasScriptCrashed then
@@ -106,6 +126,16 @@ end
 
 
 -- === Main Menu Features === --
+
+local function handle_player_leave(playerID)
+    player_join__timestamps[playerID] = nil
+end
+
+playerLeaveEventListener = EventMgr.RegisterHandler(eLuaEvent.ON_PLAYER_LEFT, function(f)
+    handle_player_leave(f)
+end)
+
+
 local function loggerPreTask(player_entries_to_log, log__content, currentTimestamp, playerID, playerSCID, playerName, playerIP)
     if not player_join__timestamps[playerID] then
         player_join__timestamps[playerID] = Time.GetEpoche()
@@ -146,7 +176,18 @@ local function write_to_log_file(player_entries_to_log)
 end
 
 
-SessionSnifferLogging_Feat = FeatureMgr.AddFeature(Utils.Joaat("SessionSnifferLogging"), "Toggle Session Sniffer Logging", eFeatureType.Toggle, "Toggle Session Sniffer Logging", function()
+SessionSnifferLogging_Feat = FeatureMgr.AddFeature(Utils.Joaat("SessionSnifferLogging"), "Toggle Session Sniffer Logging", eFeatureType.Toggle, "Toggle Session Sniffer Logging")
+
+ClickGUI.AddTab(SCRIPT_TITLE, function()
+	if ClickGUI.BeginCustomChildWindow("Session Sniffer Logging") then
+    	ClickGUI.RenderFeature(Utils.Joaat("SessionSnifferLogging"))
+		ClickGUI.EndCustomChildWindow()
+	end
+end)
+
+
+-- === Main Loop === --
+mainLoopThread = Script.RegisterLooped(function()
     if FeatureMgr.IsFeatureToggled(Utils.Joaat("SessionSnifferLogging")) then
         if not FileMgr.DoesFileExist(SCRIPT_LOG__PATH) then
             create_empty_file(SCRIPT_LOG__PATH)
@@ -169,9 +210,10 @@ SessionSnifferLogging_Feat = FeatureMgr.AddFeature(Utils.Joaat("SessionSnifferLo
             file:close()
         end
 
-        if Natives.InvokeBool(NATIVES.NETWORK_IS_SESSION_STARTED) then
+        if Natives.InvokeBool(NATIVES.NETWORK.NETWORK_IS_SESSION_STARTED) then
             local player_entries_to_log = {}
             local currentTimestamp = Time.GetEpoche()
+
             for _, playerID in pairs(Players.Get()) do
                 -- Getting the player SCID and IP in Cherax is cringe
                 local CNetGamePlayer = Players.GetById(playerID)
@@ -184,10 +226,12 @@ SessionSnifferLogging_Feat = FeatureMgr.AddFeature(Utils.Joaat("SessionSnifferLo
                             local playerIPString = Players.GetIPString(playerID)
                             local playerIP
                             if playerIPString then
-                                playerIP = playerIPString:match("^(%d+%.%d+%.%d+%.%d+) %(Direct%)") -- Cherax API is really cringe
+                                playerIP = playerIPString:match("^(%d+%.%d+%.%d+%.%d+) %(Direct%)") -- cringe
                             end
 
                             loggerPreTask(player_entries_to_log, log__content, currentTimestamp, playerID, playerSCID, playerName, playerIP)
+
+                            Script.Yield()
                         end
                     end
                 end
@@ -201,15 +245,6 @@ SessionSnifferLogging_Feat = FeatureMgr.AddFeature(Utils.Joaat("SessionSnifferLo
             player_join__timestamps = {}
         end
     end
+
+    Script.Yield()
 end)
-
-ClickGUI.AddTab(SCRIPT_TITLE, function()
-	if ClickGUI.BeginCustomChildWindow("Session Sniffer Logging") then
-    	ClickGUI.RenderFeature(Utils.Joaat("SessionSnifferLogging"))
-		ClickGUI.EndCustomChildWindow()
-	end
-end)
-
-
--- === Main Loop === --
-SessionSnifferLogging_Feat:RegisterCallbackTrigger(eCallbackTrigger.OnTick)
