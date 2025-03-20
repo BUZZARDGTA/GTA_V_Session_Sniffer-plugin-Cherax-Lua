@@ -137,10 +137,6 @@ end)
 
 
 local function loggerPreTask(player_entries_to_log, log__content, currentTimestamp, playerID, playerSCID, playerName, playerIP)
-    if not player_join__timestamps[playerID] then
-        player_join__timestamps[playerID] = Time.GetEpoche()
-    end
-
     if (
         not playerSCID
         or not playerName
@@ -148,6 +144,10 @@ local function loggerPreTask(player_entries_to_log, log__content, currentTimesta
         or playerIP == "255.255.255.255"
     ) then
         return
+    end
+
+    if not player_join__timestamps[playerID] then
+        player_join__timestamps[playerID] = Time.GetEpoche()
     end
 
     local entry_pattern = string.format("user:(%s), scid:(%d), ip:(%s), timestamp:(%%d+)", escape_magic_characters(playerName), playerSCID, escape_magic_characters(playerIP))
@@ -224,14 +224,13 @@ mainLoopThread = Script.RegisterLooped(function()
                             local playerSCID = GamerInfo.RockstarId
                             local playerName = Players.GetName(playerID)
                             local playerIPString = Players.GetIPString(playerID)
-                            local playerIP
                             if playerIPString then
-                                playerIP = playerIPString:match("^(%d+%.%d+%.%d+%.%d+) %(Direct%)") -- cringe
+                                local playerIP = playerIPString:match("^(%d+%.%d+%.%d+%.%d+) %(Direct%)") -- cringe
+
+                                loggerPreTask(player_entries_to_log, log__content, currentTimestamp, playerID, playerSCID, playerName, playerIP)
+
+                                Script.Yield()
                             end
-
-                            loggerPreTask(player_entries_to_log, log__content, currentTimestamp, playerID, playerSCID, playerName, playerIP)
-
-                            Script.Yield()
                         end
                     end
                 end
